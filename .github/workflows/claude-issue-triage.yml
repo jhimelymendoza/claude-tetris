@@ -1,0 +1,71 @@
+name: Claude Issue Triage
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Ensure curated labels exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          create() { gh label create "$1" --color "$2" --description "$3" --force; }
+          create "bug"           "d73a4a" "Something isn't working"
+          create "enhancement"   "a2eeef" "New feature or request"
+          create "gameplay"      "0e8a16" "Game mechanics / rules"
+          create "ui/ux"         "c5def5" "Visuals, layout, styling"
+          create "scoring"       "fbca04" "Score, levels, line clears"
+          create "controls"      "5319e7" "Keyboard / input handling"
+          create "documentation" "0075ca" "Docs and README"
+          create "off-topic"     "e4e669" "Unrelated to the Tetris app"
+
+      - name: Run Claude issue triage
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: >-
+            --allowedTools "Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh issue close:*),Bash(gh label list)"
+          prompt: |
+            You are triaging GitHub issue #${{ github.event.issue.number }} in a repository
+            whose ONLY purpose is a classic Tetris game built in vanilla JavaScript, HTML5
+            Canvas and CSS (no framework, no build step, no dependencies). The app is
+            exactly three files: index.html, style.css, and game.js (~305 lines). See
+            CLAUDE.md and README.md for the full scope.
+
+            Valid topics for this repository: bugs in the game, feature requests related to
+            the Tetris gameplay, UI/UX improvements, scoring or level mechanics, keyboard
+            controls, and documentation about the project itself.
+
+            Steps:
+            1. Read the issue:
+               gh issue view ${{ github.event.issue.number }} --json title,body,labels
+            2. Decide if it is relevant to this Tetris game.
+
+            ── If the issue is UNRELATED (spam, a completely different project, unrelated
+               product/service, nonsense, or gibberish) ──
+              a. Post a comment in English:
+                 gh issue comment ${{ github.event.issue.number }} --body "This issue does not match the use cases of this application (a Tetris game) and will be closed automatically."
+              b. Add the off-topic label:
+                 gh issue edit ${{ github.event.issue.number }} --add-label "off-topic"
+              c. Close the issue:
+                 gh issue close ${{ github.event.issue.number }}
+
+            ── If the issue IS relevant to the Tetris app ──
+              Apply one or more labels ONLY from this curated set:
+                bug, enhancement, gameplay, ui/ux, scoring, controls, documentation
+              gh issue edit ${{ github.event.issue.number }} --add-label "label1,label2"
+              Do NOT invent new labels. Do NOT close the issue. Do NOT post a comment.
+
+            Be concise. Only run the gh commands required. Nothing else.
